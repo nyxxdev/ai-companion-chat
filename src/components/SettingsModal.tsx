@@ -59,7 +59,7 @@ const SettingsModal = ({
               className="bg-secondary/50 border-0"
             />
             <p className="text-xs text-muted-foreground">
-              Get your free API key from{" "}
+              Using GLM-4.7 model via Hugging Face Router. Get your API key from{" "}
               <a
                 href="https://huggingface.co/settings/tokens"
                 target="_blank"

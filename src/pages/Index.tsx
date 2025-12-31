@@ -7,7 +7,8 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 
 const Index = () => {
   const [apiKey, setApiKey] = useState(() => {
-    return localStorage.getItem("hf_api_key") || "";
+    // Use stored key or default to provided key
+    return localStorage.getItem("hf_api_key") || "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";
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 

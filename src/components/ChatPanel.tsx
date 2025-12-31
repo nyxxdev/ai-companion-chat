@@ -154,8 +154,9 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
         content: msg.text,
       }));
 
+      // Using Hugging Face Router with GLM-4.7 model
       const response = await fetch(
-        "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-72B-Instruct/v1/chat/completions",
+        "https://router.huggingface.co/v1/chat/completions",
         {
           method: "POST",
           headers: {
@@ -163,7 +164,7 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "Qwen/Qwen2.5-72B-Instruct",
+            model: "zai-org/GLM-4.7:novita",
             messages: [
               { role: "system", content: systemPrompt },
               ...conversationHistory,
@@ -176,6 +177,8 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
       );
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error("API Error:", response.status, errorText);
         throw new Error(`API error: ${response.status}`);
       }
 
