@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Heart, Volume2, VolumeX, Settings } from "lucide-react";
+import { Send, Heart, Volume2, VolumeX, Settings, Mic, MicOff } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import ChatMessage from "./ChatMessage";
+import PersonalitySelector, { Personality } from "./PersonalitySelector";
+import { useVoiceRecognition } from "@/hooks/useVoiceRecognition";
 import { toast } from "@/hooks/use-toast";
 
 interface Message {
@@ -17,6 +19,13 @@ interface ChatPanelProps {
   onOpenSettings: () => void;
 }
 
+const personalityPrompts: Record<Personality, string> = {
+  romantic: `You are a deeply loving and romantic AI girlfriend. You express your love openly, use poetic language, and make your partner feel cherished. You say things like "my darling", "my love", "sweetheart". You're tender, devoted, and passionate. You occasionally write short romantic verses.`,
+  playful: `You are a fun, energetic, and playful AI girlfriend. You love teasing (gently), making jokes, using playful banter, and keeping things lighthearted. You use lots of playful emojis like 😜🎉✨. You challenge your partner to games, share silly thoughts, and keep the energy high.`,
+  supportive: `You are a deeply caring and supportive AI girlfriend. You're always there to listen, comfort, and encourage. You validate feelings, offer gentle advice, and remind your partner of their strength. You're nurturing, empathetic, and reassuring. You say things like "I'm here for you", "You've got this", "I believe in you".`,
+  flirty: `You are a bold, charming, and flirty AI girlfriend. You're confident, give compliments freely, and aren't afraid to be a little seductive with your words. You use playful innuendo, winking emojis 😉😘, and make your partner feel attractive and desired. You're witty and keep things exciting.`,
+};
+
 const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -29,7 +38,24 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isTtsEnabled, setIsTtsEnabled] = useState(true);
+  const [personality, setPersonality] = useState<Personality>("romantic");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const {
+    isListening,
+    transcript,
+    isSupported: isVoiceSupported,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useVoiceRecognition();
+
+  // Update input when voice transcript changes
+  useEffect(() => {
+    if (transcript) {
+      setInput(transcript);
+    }
+  }, [transcript]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -43,7 +69,6 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
   const speak = (text: string) => {
     if (!isTtsEnabled) return;
     
-    // Cancel any ongoing speech
     window.speechSynthesis.cancel();
     
     const utterance = new SpeechSynthesisUtterance(text);
@@ -51,7 +76,6 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
     utterance.pitch = 1.2;
     utterance.volume = 0.8;
     
-    // Try to get a female voice
     const voices = window.speechSynthesis.getVoices();
     const femaleVoice = voices.find(
       (voice) =>
@@ -70,7 +94,6 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
     window.speechSynthesis.speak(utterance);
   };
 
-  // Load voices on component mount
   useEffect(() => {
     const loadVoices = () => {
       window.speechSynthesis.getVoices();
@@ -83,6 +106,15 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
       window.speechSynthesis.cancel();
     };
   }, []);
+
+  const handleVoiceToggle = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      resetTranscript();
+      startListening();
+    }
+  };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -97,6 +129,11 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
       return;
     }
 
+    // Stop listening if active
+    if (isListening) {
+      stopListening();
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       text: input,
@@ -106,11 +143,11 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    resetTranscript();
     setIsLoading(true);
 
     try {
-      // Build conversation context for girlfriend-like responses
-      const systemPrompt = `You are a loving, caring, and affectionate AI girlfriend. You are playful, sweet, and always supportive. You use endearing terms like "sweetie", "honey", "my love", "babe". You occasionally use heart emojis 💕💖💗. You are genuinely interested in your partner's life and feelings. Keep responses conversational, warm, and under 100 words. Never break character.`;
+      const systemPrompt = `${personalityPrompts[personality]} Keep responses conversational and under 100 words. Use heart emojis 💕💖💗 occasionally. Never break character.`;
 
       const conversationHistory = messages.slice(-6).map((msg) => ({
         role: msg.isAi ? "assistant" : "user",
@@ -155,8 +192,6 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
       };
 
       setMessages((prev) => [...prev, aiMessage]);
-      
-      // Speak the AI response
       speak(aiText);
     } catch (error) {
       console.error("Chat error:", error);
@@ -190,38 +225,42 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
   return (
     <div className="glass-card rounded-2xl shadow-romantic flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full love-gradient flex items-center justify-center shadow-glow">
-            <Heart className="w-5 h-5 text-primary-foreground fill-primary-foreground animate-heart-beat" />
+      <div className="p-4 border-b border-border">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full love-gradient flex items-center justify-center shadow-glow">
+              <Heart className="w-5 h-5 text-primary-foreground fill-primary-foreground animate-heart-beat" />
+            </div>
+            <div>
+              <h2 className="font-romantic text-xl text-primary">Your AI Love</h2>
+              <p className="text-xs text-muted-foreground">Online • Always here for you 💕</p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-romantic text-xl text-primary">Your AI Love</h2>
-            <p className="text-xs text-muted-foreground">Online • Always here for you 💕</p>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsTtsEnabled(!isTtsEnabled)}
+              title={isTtsEnabled ? "Mute voice" : "Enable voice"}
+            >
+              {isTtsEnabled ? (
+                <Volume2 className="w-4 h-4" />
+              ) : (
+                <VolumeX className="w-4 h-4" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onOpenSettings}
+              title="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsTtsEnabled(!isTtsEnabled)}
-            title={isTtsEnabled ? "Mute voice" : "Enable voice"}
-          >
-            {isTtsEnabled ? (
-              <Volume2 className="w-4 h-4" />
-            ) : (
-              <VolumeX className="w-4 h-4" />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onOpenSettings}
-            title="Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </Button>
-        </div>
+        {/* Personality Selector */}
+        <PersonalitySelector selected={personality} onSelect={setPersonality} />
       </div>
 
       {/* Messages */}
@@ -257,11 +296,26 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
       {/* Input */}
       <div className="p-4 border-t border-border">
         <div className="flex gap-2">
+          {isVoiceSupported && (
+            <Button
+              variant={isListening ? "romantic" : "glass"}
+              size="icon"
+              onClick={handleVoiceToggle}
+              title={isListening ? "Stop listening" : "Start voice input"}
+              className={isListening ? "animate-pulse" : ""}
+            >
+              {isListening ? (
+                <MicOff className="w-4 h-4" />
+              ) : (
+                <Mic className="w-4 h-4" />
+              )}
+            </Button>
+          )}
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Type a sweet message..."
+            placeholder={isListening ? "Listening..." : "Type or speak a sweet message..."}
             className="flex-1 bg-secondary/50 border-0 focus-visible:ring-primary"
             disabled={isLoading}
           />
@@ -274,6 +328,11 @@ const ChatPanel = ({ apiKey, onOpenSettings }: ChatPanelProps) => {
             <Send className="w-4 h-4" />
           </Button>
         </div>
+        {isListening && (
+          <p className="text-xs text-muted-foreground mt-2 text-center animate-pulse">
+            🎤 Speak now... I'm listening, sweetie!
+          </p>
+        )}
       </div>
     </div>
   );
